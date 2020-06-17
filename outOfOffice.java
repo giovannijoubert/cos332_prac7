@@ -8,21 +8,22 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.rmi.server.UID;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 
+
 class outOfOffice {
+    private static String email = "cos332receiver@sitecheck.co.za";
+    private static String password = "&V46CrD?1S4x";
+    private static String mailServer = "mail.sitecheck.co.za";
     public static void main(String[] args) throws InterruptedException {
-        String email = "cos332receiver@sitecheck.co.za";
-        String password = "&V46CrD?1S4x";
-        String mailServer = "mail.sitecheck.co.za";
 
         // Read existing emails from stored txt files
-        List<String> OldEmails = new ArrayList<String>();
+        List<String> OldReceivers = new ArrayList<String>();
         List<String> OldUIDL = new ArrayList<String>();
         try {
-            OldEmails = Files.readAllLines(new File("EmailNumbers.txt").toPath(), Charset.defaultCharset());
+            OldReceivers = Files.readAllLines(new File("Receivers.txt").toPath(), Charset.defaultCharset());
             OldUIDL = Files.readAllLines(new File("UIDL.txt").toPath(), Charset.defaultCharset());
         } catch (Exception e) {
         }
@@ -31,6 +32,9 @@ class outOfOffice {
         Socket mySocket = null;
         PrintWriter out = null;
         BufferedReader in = null;
+
+        Boolean isEmailToSend = true;
+        List<String> Receivers = new ArrayList<String>();
 
         try {
             mySocket = new Socket(mailServer, 110);
@@ -65,6 +69,7 @@ class outOfOffice {
 
             while (!line.equals(".")) {
                 line = in.readLine();
+              //  System.out.println(line);
                 if (line.split(" ").length > 1) { // skip the trailing "."
                     EmailNumbers.add(line.split(" ")[0]);
                     UIDL.add(line.split(" ")[1]);
@@ -74,44 +79,48 @@ class outOfOffice {
 
             //retrieve new emails
             for (String item : UIDL) {
+                String currentReceiver = "";
+                isEmailToSend = true;
                 if(!OldUIDL.contains(item)){
-                    out.println("retr "+EmailNumbers.get(UIDL.indexOf(item)));
-                    Thread.sleep(1000);
+                    out.println("top "+EmailNumbers.get(UIDL.indexOf(item)) + " 0");
+                    Thread.sleep(100);
 
                     //read entire email
                     line = "";
                     while (!line.equals(".")) {
                         line = in.readLine();
 
-                        //get respond adress
-                        if(line.contains("Return-Path:"))
-                            System.out.println(line);
-
                         //check subject
                         if(line.contains("Subject:"))
-                            System.out.println(line);
+                            if(! line.contains("prac7"))
+                                isEmailToSend = false;
+                        
+                         //see if there are others cc'd (mailing list)
+                         if(line.length()>2)
+                         if(line.substring(0,3).equals("To:"))
+                             if(line.contains(","))
+                                isEmailToSend = false;
 
-                        //see if there are others cc'd (mailing list)
-                        if(line.length()>2)
-                        if(line.substring(0,3).equals("To:"))
-                            System.out.println(line);
+                        //get respond adress
+                        if(line.contains("Return-Path:")){
+                           currentReceiver = (line.substring(line.indexOf("<")+1, line.indexOf(">")));
+                        }                       
+                    }
+                    if(isEmailToSend && !OldReceivers.contains(currentReceiver)){
+                        OldReceivers.add(currentReceiver);
+                        Receivers.add(currentReceiver);
                     }
                 }
             }
-          
 
-            //TODO: Delete email from TXT file if it has been deleted from POP3 server
-            /* STORE NEW EMAILS TO TXT FILES
-            Path outEmailNumbers = Paths.get("EmailNumbers.txt");
-            Files.write(outEmailNumbers, EmailNumbers, Charset.defaultCharset());
+            //TODO: Send email to receivers
+            SendOutOfOffice(Receivers);
+
+            Path outReceivers = Paths.get("Receivers.txt");
+            Files.write(outReceivers, OldReceivers, Charset.defaultCharset());
 
             Path outUIDL = Paths.get("UIDL.txt");
             Files.write(outUIDL, UIDL, Charset.defaultCharset());
-            */
-
-       /*     out.println("retr 1");
-            Thread.sleep(100);
-            System.out.println(in.readLine()); */
 
             // Logout: +OK Logging out.
             out.println("quit");
@@ -126,5 +135,77 @@ class outOfOffice {
             return;
         }
 
+    }
+
+    private static void SendOutOfOffice(List<String> receivers){
+        if(! (receivers.size() > 0))
+            return;
+
+        System.out.println("Sending Emails (please wait for server)...");
+        Socket pingSocket = null;
+        PrintWriter out = null;
+        BufferedReader in = null;
+
+        try {
+            for (String receiver : receivers) {
+                pingSocket = new Socket("sitecheck.co.za", 25);
+                out = new PrintWriter(pingSocket.getOutputStream(), true);
+                in = new BufferedReader(new InputStreamReader(pingSocket.getInputStream()));
+    
+                //greet server
+                out.println("ehlo sitecheck.co.za");
+               
+                //wait for server to respond
+                Thread.sleep(3000);
+    
+                //authenticate SMTP
+                out.println("AUTH LOGIN");
+    
+                //wait for server to respond
+                Thread.sleep(2000);
+              
+                //send username
+                out.println(Base64.getEncoder().encodeToString(email.getBytes("utf-8")));
+    
+                //wait for server to respond
+                Thread.sleep(2000);
+    
+                //send password
+                out.println(Base64.getEncoder().encodeToString(password.getBytes("utf-8")));
+    
+                //wait for server to respond
+                Thread.sleep(2000);
+    
+                
+                out.println("mail from: cos332receiver@sitecheck.co.za");
+                out.println("rcpt to: " + receiver);
+                out.println("data");
+                out.println("To: " + receiver);
+                out.println("From: " + email);
+                out.println("Subject: On Vacation");
+                out.println("Hi! I will respond to your email once I am back from holiday! :)");
+                out.println("");
+                out.println("Regards,");
+                out.println("Your COS332 Friend");
+                out.println(".");
+                
+                out.println("quit");
+    
+                String inputLine;
+    
+                //Print server responses
+                while ((inputLine = in.readLine()) != null) 
+                    System.out.println(inputLine);
+    
+                out.close();
+                in.close();
+                pingSocket.close();
+            }
+        } catch (IOException e) {
+            return;
+        } catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
     }
 }
