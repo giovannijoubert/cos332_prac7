@@ -113,8 +113,11 @@ class outOfOffice {
                 }
             }
 
-            //TODO: Send email to receivers
-            SendOutOfOffice(Receivers);
+            if(Receivers.size() == 0){
+                System.out.println("No new mails (or mails that satisfy criteria to send out of office)");
+            } else {
+                SendOutOfOffice(Receivers);
+            }
 
             Path outReceivers = Paths.get("Receivers.txt");
             Files.write(outReceivers, OldReceivers, Charset.defaultCharset());
@@ -200,11 +203,12 @@ class outOfOffice {
                 out.close();
                 in.close();
                 pingSocket.close();
+
+                System.out.println("Sent to: " + receivers);
             }
         } catch (IOException e) {
             return;
         } catch (InterruptedException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
     }
